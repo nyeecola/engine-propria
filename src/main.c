@@ -4,8 +4,10 @@
 
 #include <cglm/cglm.h>
 
+#include <string.h>
 #include <stdlib.h>
 #include <stdio.h>
+#include <unistd.h>
 
 static const struct {
     float x, y;
@@ -60,6 +62,7 @@ static void key_callback(GLFWwindow* window, int key, int scancode, int action, 
 }
 
 int main(void) {
+
     GLFWwindow* window;
 
     GLuint vertex_buffer, vertex_shader, fragment_shader, program;
@@ -147,6 +150,17 @@ int main(void) {
     glVertexAttribPointer(vpos_location, 2, GL_FLOAT, GL_FALSE, sizeof(float) * 5, (void*) 0);
     glEnableVertexAttribArray(vcol_location);
     glVertexAttribPointer(vcol_location, 3, GL_FLOAT, GL_FALSE, sizeof(float) * 5, (void*) (sizeof(float) * 2));
+
+    // test code for opening editor on a specific file
+    int a = fork();
+    if (!a) {
+        char *argv[3];
+        argv[0] = "/usr/bin/mousepad";
+        argv[1] = "/tmp/aaa";
+        argv[2] = NULL;
+        execvp("/usr/bin/mousepad", (char * const *) &argv[0]);
+        return 0;
+    }
 
     while (!glfwWindowShouldClose(window)) {
         {
