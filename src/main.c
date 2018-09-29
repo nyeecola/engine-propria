@@ -17,26 +17,36 @@ static const struct {
     {   0.f,  0.6f, 0.f, 0.f, 1.f }
 };
 
-static const char* vertex_shader_text =
-    "#version 330\n"
-    "uniform mat4 MVP;\n"
-    "attribute vec3 vCol;\n"
-    "attribute vec2 vPos;\n"
-    "smooth out vec3 color;\n"
-    "void main()\n"
-    "{\n"
-    "    vec2 vPoss = vPos * 100.0f;\n"
-    "    gl_Position = MVP * vec4(vPoss, 0.0, 1.0);\n"
-    "    color = vCol;\n"
-    "}\n";
+// TODO: caller must free buffer
+char* load_file(char const* path)
+{
+    char* buffer = 0;
+    long length;
+    FILE * f = fopen (path, "rb"); //was "rb"
 
-static const char* fragment_shader_text =
-    "#version 330\n"
-    "smooth in vec3 color;\n"
-    "void main()\n"
-    "{\n"
-    "    gl_FragColor = vec4(color, 1.0);\n"
-    "}\n";
+    if (f)
+    {
+      fseek (f, 0, SEEK_END);
+      length = ftell (f);
+      fseek (f, 0, SEEK_SET);
+      buffer = (char*)malloc ((length+1)*sizeof(char));
+      if (buffer)
+      {
+        fread (buffer, sizeof(char), length, f);
+      }
+      fclose (f);
+    }
+    buffer[length] = '\0';
+
+#if 0
+    for (int i = 0; i < length; i++) {
+        printf("buffer[%d] == %c\n", i, buffer[i]);
+    }
+    printf("buffer = %s\n", buffer);
+#endif
+
+    return buffer;
+}
 
 static void error_callback(int error, const char* description)
 {
@@ -95,10 +105,14 @@ int main(void) {
     GLchar shader_info_buffer[200];
     GLint shader_info_len;
 
+    // TODO: free
+    char* vertex_shader_text = load_file("src/vertex.glsl");
+    char* fragment_shader_text = load_file("src/frag.glsl");
+
     // vertex shader
     {
         vertex_shader = glCreateShader(GL_VERTEX_SHADER);
-        glShaderSource(vertex_shader, 1, &vertex_shader_text, NULL);
+        glShaderSource(vertex_shader, 1, (const char * const *) &vertex_shader_text, NULL);
         glCompileShader(vertex_shader);
 
         glGetShaderInfoLog(vertex_shader, 200, &shader_info_len, shader_info_buffer);
@@ -108,7 +122,7 @@ int main(void) {
     // frag shader
     {
         fragment_shader = glCreateShader(GL_FRAGMENT_SHADER);
-        glShaderSource(fragment_shader, 1, &fragment_shader_text, NULL);
+        glShaderSource(fragment_shader, 1, (const char * const *) &fragment_shader_text, NULL);
         glCompileShader(fragment_shader);
 
         glGetShaderInfoLog(fragment_shader, 200, &shader_info_len, shader_info_buffer);
