@@ -1,19 +1,14 @@
-#include <stdio.h>
-#include <stdlib.h>
-#include <stdint.h>
-#include <stdarg.h>
-#include <string.h>
-#include <math.h>
-#include <assert.h>
-#include <math.h>
-#include <limits.h>
-#include <time.h>
-
 #include <GL/glew.h>
 #include <GL/gl.h>
 #include <GLFW/glfw3.h>
 
 #include <cglm/cglm.h>
+
+#include <string.h>
+#include <stdlib.h>
+#include <stdio.h>
+#include <unistd.h>
+#include <stdbool.h>
 
 #define NK_INCLUDE_FIXED_TYPES
 #define NK_INCLUDE_STANDARD_IO
@@ -42,6 +37,44 @@ static const struct {
     {  0.6f, -0.4f, 0.f, 1.f, 0.f },
     {   0.f,  0.6f, 0.f, 0.f, 1.f }
 };
+
+typedef enum {
+    ADDING_NONE,
+    ADDING_PRIMITIVE,
+    ADDING_ENTITY,
+    ADDING_LOGIC,
+    ADDING_MAP,
+} NewFileState;
+
+typedef struct {
+    char name[20];
+    char type[20];
+} Attrib;
+
+typedef struct {
+    char name[30];
+    Attrib attribs[30];
+    int num_attribs;
+
+    bool editing;
+    bool addingAttribute;
+    char addingAttributeBuffer[30];
+    char addingAttributeTypeBuffer[30];
+} Object;
+
+typedef struct {
+    int num_maps;
+    char map_name[20][80];
+
+    int num_primitives;
+    Object primitives[80];
+
+    int num_entities;
+    Object entities[80];
+
+    int num_logics;
+    char logic_name[20][80];
+} Files;
 
 // TODO: caller must free buffer
 char* load_file(char const* path) {
@@ -196,6 +229,18 @@ int main(void) {
         return 0;
     }
 
+    Files files = {0};
+
+    struct nk_color white = {.r = 255, .g = 255, .b = 255, .a = 255};
+    struct nk_style_button file_label_style = {0};
+    file_label_style.text_background = white;
+    file_label_style.text_normal = white;
+    file_label_style.text_hover = white;
+    file_label_style.text_active = white;
+    file_label_style.text_alignment = NK_TEXT_LEFT;
+
+    NewFileState createFileState = ADDING_NONE;
+    char createFileBuffer[50] = {0};
     while (!glfwWindowShouldClose(window)) {
         {
             int err = glGetError();
@@ -235,40 +280,227 @@ int main(void) {
         }
         {
             nk_glfw3_new_frame();
-            if (nk_begin(ctx, "Engine Propria", nk_rect(50, 50, 230, 250),
+            if (nk_begin(ctx, "Game", nk_rect(50, 50, 230, 750),
                         NK_WINDOW_BORDER|NK_WINDOW_MOVABLE|NK_WINDOW_SCALABLE|
-                        NK_WINDOW_MINIMIZABLE|NK_WINDOW_TITLE));
-            {
-                enum {EASY, HARD};
-                static int op = EASY;
-                static int property = 20;
-                nk_layout_row_static(ctx, 30, 80, 1);
-                if (nk_button_label(ctx, "button"))
-                    fprintf(stdout, "button pressed\n");
+                        NK_WINDOW_MINIMIZABLE|NK_WINDOW_TITLE)) {
+                if (nk_tree_push(ctx, NK_TREE_TAB, "Maps", NK_MINIMIZED)) {
+                    if (nk_button_label(ctx, "create map")) {
+                        createFileState = ADDING_MAP;
+                        memset(createFileBuffer, 0, sizeof(createFileBuffer));
+                    }
 
-                nk_layout_row_dynamic(ctx, 30, 2);
-                if (nk_option_label(ctx, "easy", op == EASY)) op = EASY;
-                if (nk_option_label(ctx, "hard", op == HARD)) op = HARD;
+                    if (createFileState == ADDING_MAP) {
+                        nk_edit_focus(ctx, 0);
+                        if (nk_edit_string_zero_terminated(ctx, NK_EDIT_SIG_ENTER | NK_EDIT_FIELD, createFileBuffer, sizeof(createFileBuffer), nk_filter_default) & NK_EDIT_COMMITED) {
+                            strcpy(files.map_name[files.num_maps++], createFileBuffer);
+                            createFileState = ADDING_NONE;
+                        }
+                    }
 
-                nk_layout_row_dynamic(ctx, 25, 1);
-                nk_property_int(ctx, "Compression:", 0, &property, 100, 10, 1);
+                    for (int i = 0; i < files.num_maps; i++) {
+                        if (nk_button_label_styled(ctx, &file_label_style, files.map_name[i])) {
+                        }
+                    }
 
-                nk_layout_row_dynamic(ctx, 20, 1);
-                nk_label(ctx, "background:", NK_TEXT_LEFT);
-                nk_layout_row_dynamic(ctx, 25, 1);
-                if (nk_combo_begin_color(ctx, nk_rgb_cf(bg), nk_vec2(nk_widget_width(ctx),400))) {
-                    nk_layout_row_dynamic(ctx, 120, 1);
-                    bg = nk_color_picker(ctx, bg, NK_RGBA);
-                    nk_layout_row_dynamic(ctx, 25, 1);
-                    bg.r = nk_propertyf(ctx, "#R:", 0, bg.r, 1.0f, 0.01f,0.005f);
-                    bg.g = nk_propertyf(ctx, "#G:", 0, bg.g, 1.0f, 0.01f,0.005f);
-                    bg.b = nk_propertyf(ctx, "#B:", 0, bg.b, 1.0f, 0.01f,0.005f);
-                    bg.a = nk_propertyf(ctx, "#A:", 0, bg.a, 1.0f, 0.01f,0.005f);
-                    nk_combo_end(ctx);
+                    nk_tree_pop(ctx);
+                }
+                if (nk_tree_push(ctx, NK_TREE_TAB, "Objects", NK_MINIMIZED)) {
+                    if (nk_tree_push(ctx, NK_TREE_NODE, "Primitives", NK_MINIMIZED)) {
+                        if (nk_button_label(ctx, "create primitive")) {
+                            createFileState = ADDING_PRIMITIVE;
+                            memset(createFileBuffer, 0, sizeof(createFileBuffer));
+                        }
+
+                        if (createFileState == ADDING_PRIMITIVE) {
+                            nk_edit_focus(ctx, 0);
+                            if (nk_edit_string_zero_terminated(ctx, NK_EDIT_SIG_ENTER | NK_EDIT_FIELD, createFileBuffer, sizeof(createFileBuffer), nk_filter_default) & NK_EDIT_COMMITED) {
+                                Object p = {0};
+
+                                strcpy(p.name, createFileBuffer);
+                                createFileState = ADDING_NONE;
+
+                                files.primitives[files.num_primitives++] = p;
+                            }
+                        }
+
+                        for (int i = 0; i < files.num_primitives; i++) {
+                            if (nk_button_label_styled(ctx, &file_label_style, files.primitives[i].name)) {
+                                files.primitives[i].editing = true;
+                            }
+                        }
+
+                        nk_tree_pop(ctx);
+                    }
+                    if (nk_tree_push(ctx, NK_TREE_NODE, "Entities", NK_MINIMIZED)) {
+                        if (nk_button_label(ctx, "create entity")) {
+                            createFileState = ADDING_ENTITY;
+                            memset(createFileBuffer, 0, sizeof(createFileBuffer));
+                        }
+
+                        if (createFileState == ADDING_ENTITY) {
+                            nk_edit_focus(ctx, 0);
+                            if (nk_edit_string_zero_terminated(ctx, NK_EDIT_SIG_ENTER | NK_EDIT_FIELD, createFileBuffer, sizeof(createFileBuffer), nk_filter_default) & NK_EDIT_COMMITED) {
+                                Object p = {0};
+
+                                strcpy(p.name, createFileBuffer);
+                                createFileState = ADDING_NONE;
+
+                                files.entities[files.num_entities++] = p;
+                            }
+                        }
+
+                        for (int i = 0; i < files.num_entities; i++) {
+                            if (nk_button_label_styled(ctx, &file_label_style, files.entities[i].name)) {
+                                files.entities[i].editing = true;
+                            }
+                        }
+
+                        nk_tree_pop(ctx);
+                    }
+                    nk_tree_pop(ctx);
+                }
+                if (nk_tree_push(ctx, NK_TREE_TAB, "Logic", NK_MINIMIZED)) {
+                    if (nk_button_label(ctx, "create logic file")) {
+                        createFileState = ADDING_LOGIC;
+                        memset(createFileBuffer, 0, sizeof(createFileBuffer));
+                    }
+
+                    if (createFileState == ADDING_LOGIC) {
+                        nk_edit_focus(ctx, 0);
+                        if (nk_edit_string_zero_terminated(ctx, NK_EDIT_SIG_ENTER | NK_EDIT_FIELD, createFileBuffer, sizeof(createFileBuffer), nk_filter_default) & NK_EDIT_COMMITED) {
+                            strcpy(files.logic_name[files.num_logics++], createFileBuffer);
+                            createFileState = ADDING_NONE;
+                        }
+                    }
+
+                    for (int i = 0; i < files.num_logics; i++) {
+                        if (nk_button_label_styled(ctx, &file_label_style, files.logic_name[i])) {
+                        }
+                    }
+
+                    nk_tree_pop(ctx);
+                }
+            }
+            nk_end(ctx);
+
+            for (int i = 0; i < files.num_primitives; i++) {
+                if (files.primitives[i].editing) {
+                    if (nk_begin(ctx, files.primitives[i].name, nk_rect(100, 50, 230, 250),
+                                NK_WINDOW_BORDER|NK_WINDOW_MOVABLE|NK_WINDOW_SCALABLE|
+                                NK_WINDOW_MINIMIZABLE|NK_WINDOW_TITLE|NK_WINDOW_CLOSABLE)) {
+                        nk_layout_row_dynamic(ctx, 15, 1);
+
+                        if (nk_button_label(ctx, "create attribute")) {
+                            files.primitives[i].addingAttribute = true;
+                            memset(files.primitives[i].addingAttributeBuffer, 0, sizeof(files.primitives[i].addingAttributeBuffer));
+                            memset(files.primitives[i].addingAttributeTypeBuffer, 0, sizeof(files.primitives[i].addingAttributeTypeBuffer));
+                        }
+
+                        if (files.primitives[i].addingAttribute) {
+                            bool ok = false;
+                            const float ratio[] = {0.4, 0.6};
+
+                            nk_layout_row(ctx, NK_DYNAMIC, 25, 2, ratio);
+                            if (nk_edit_string_zero_terminated(ctx,
+                                                               NK_EDIT_SIG_ENTER | NK_EDIT_FIELD,
+                                                               files.primitives[i].addingAttributeTypeBuffer,
+                                                               sizeof(files.primitives[i].addingAttributeTypeBuffer),
+                                                               nk_filter_default)
+                                                                & NK_EDIT_COMMITED) {
+                                ok = true;
+                            }
+                            if (nk_edit_string_zero_terminated(ctx,
+                                                               NK_EDIT_SIG_ENTER | NK_EDIT_FIELD,
+                                                               files.primitives[i].addingAttributeBuffer,
+                                                               sizeof(files.primitives[i].addingAttributeBuffer),
+                                                               nk_filter_default)
+                                                                & NK_EDIT_COMMITED) {
+                                ok = true;
+                            }
+
+                            if (ok) {
+                                strcpy(files.primitives[i].attribs[files.primitives[i].num_attribs].type, files.primitives[i].addingAttributeTypeBuffer);
+                                strcpy(files.primitives[i].attribs[files.primitives[i].num_attribs].name, files.primitives[i].addingAttributeBuffer);
+                                files.primitives[i].num_attribs++;
+                                files.primitives[i].addingAttribute = false;
+                            }
+                        }
+
+                        for (int j = 0; j < files.primitives[i].num_attribs; j++) {
+                            const float ratio[] = {0.4, 0.6};
+
+                            nk_layout_row(ctx, NK_DYNAMIC, 25, 2, ratio);
+                            if (nk_button_label_styled(ctx, &file_label_style, files.primitives[i].attribs[j].type));
+                            if (nk_button_label_styled(ctx, &file_label_style, files.primitives[i].attribs[j].name));
+                        }
+                    }
+                    nk_end(ctx);
+
+                    if (nk_window_is_hidden(ctx, files.primitives[i].name)) {
+                        files.primitives[i].editing = false;
+                    }
                 }
             }
 
-            nk_end(ctx);
+            for (int i = 0; i < files.num_entities; i++) {
+                if (files.entities[i].editing) {
+                    if (nk_begin(ctx, files.entities[i].name, nk_rect(100, 50, 230, 250),
+                                NK_WINDOW_BORDER|NK_WINDOW_MOVABLE|NK_WINDOW_SCALABLE|
+                                NK_WINDOW_MINIMIZABLE|NK_WINDOW_TITLE|NK_WINDOW_CLOSABLE)) {
+                        nk_layout_row_dynamic(ctx, 15, 1);
+
+                        if (nk_button_label(ctx, "create attribute")) {
+                            files.entities[i].addingAttribute = true;
+                            memset(files.entities[i].addingAttributeBuffer, 0, sizeof(files.entities[i].addingAttributeBuffer));
+                            memset(files.entities[i].addingAttributeTypeBuffer, 0, sizeof(files.entities[i].addingAttributeTypeBuffer));
+                        }
+
+                        if (files.entities[i].addingAttribute) {
+                            bool ok = false;
+                            const float ratio[] = {0.4, 0.6};
+
+                            nk_layout_row(ctx, NK_DYNAMIC, 25, 2, ratio);
+                            if (nk_edit_string_zero_terminated(ctx,
+                                                               NK_EDIT_SIG_ENTER | NK_EDIT_FIELD,
+                                                               files.entities[i].addingAttributeTypeBuffer,
+                                                               sizeof(files.entities[i].addingAttributeTypeBuffer),
+                                                               nk_filter_default)
+                                                                & NK_EDIT_COMMITED) {
+                                ok = true;
+                            }
+                            if (nk_edit_string_zero_terminated(ctx,
+                                                               NK_EDIT_SIG_ENTER | NK_EDIT_FIELD,
+                                                               files.entities[i].addingAttributeBuffer,
+                                                               sizeof(files.entities[i].addingAttributeBuffer),
+                                                               nk_filter_default)
+                                                                & NK_EDIT_COMMITED) {
+                                ok = true;
+                            }
+
+                            if (ok) {
+                                strcpy(files.entities[i].attribs[files.entities[i].num_attribs].type, files.entities[i].addingAttributeTypeBuffer);
+                                strcpy(files.entities[i].attribs[files.entities[i].num_attribs].name, files.entities[i].addingAttributeBuffer);
+                                files.entities[i].num_attribs++;
+                                files.entities[i].addingAttribute = false;
+                            }
+                        }
+
+                        for (int j = 0; j < files.entities[i].num_attribs; j++) {
+                            const float ratio[] = {0.4, 0.6};
+
+                            nk_layout_row(ctx, NK_DYNAMIC, 25, 2, ratio);
+                            if (nk_button_label_styled(ctx, &file_label_style, files.entities[i].attribs[j].type));
+                            if (nk_button_label_styled(ctx, &file_label_style, files.entities[i].attribs[j].name));
+                        }
+                    }
+                    nk_end(ctx);
+
+                    if (nk_window_is_hidden(ctx, files.entities[i].name)) {
+                        files.entities[i].editing = false;
+                    }
+                }
+            }
+
             nk_glfw3_render(NK_ANTI_ALIASING_ON, MAX_VERTEX_BUFFER, MAX_ELEMENT_BUFFER);
         }
 
